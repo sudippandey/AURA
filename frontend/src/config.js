@@ -11,7 +11,7 @@ export const CONFIG = {
       );
     } catch { return (typeof window !== "undefined" && window.__API_BASE_URL) || ""; }
   },
-  USE_MOCK: true, // flip to false when backend is ready (or set localStorage aura_use_mock="0")
+  USE_MOCK: false,
   CURRENCY: "USD",
   LOCALE: "en-US",
   FREE_SHIP_THRESHOLD: 75,

@@ -29,7 +29,7 @@ The companion Express/Mongo API in `backend/` speaks this storefront natively:
 
 1. Run it: `cd backend && npm install && npm run seed && npm run dev` (http://localhost:4000).
 2. Point the preview at it: `localStorage.setItem("aura_api_base_url", "http://localhost:4000")`.
-3. Go live: `localStorage.setItem("aura_use_mock", "0")`, then reload the preview.
+3. Reload the preview. A configured backend URL uses live requests automatically; set `localStorage.setItem("aura_use_mock", "1")` to force mock data.
 
 What happens in live mode (`src/services/api/*` only — no UI changes):
 - `apiClient.js` prefixes `/api/v1`, unwraps the `{success,data,meta}` envelope
@@ -45,14 +45,14 @@ What happens in live mode (`src/services/api/*` only — no UI changes):
   (server prices every order) and clears the server cart after purchase.
 - Account orders tab re-reads from `GET /orders`; profile name saves to the server.
 
-Flip back anytime: `localStorage.setItem("aura_use_mock", "1")` (or remove the keys).
+To switch back to live requests after forcing mock mode, set `aura_use_mock` to `"0"` or remove it. With no backend URL, requests use mocks.
 
 ## Connect YOUR OWN backend API instead
 1. Set the base URL — one of:
    - `localStorage.setItem("aura_api_base_url", "https://api.yours.com")`, or
    - define `window.__API_BASE_URL = "https://api.yours.com"` before `src/app.js` loads, or
-   - edit `CONFIG.API_URL` in `src/config.js`.
-2. Disable mock mode: `localStorage.setItem("aura_use_mock", "0")` (or set `USE_MOCK: false`).
+   - edit `CONFIG.API_BASE_URL` in `src/config.js`.
+2. Live requests are enabled when a backend URL is configured; set `localStorage.setItem("aura_use_mock", "1")` to force mock mode.
 3. Match endpoints in `src/services/api/endpoints.js`, or keep your backend REST shape and only edit the `*Api.js` mappers.
 4. Auth: `authApi.js` sends `Authorization: Bearer <token>` automatically when `aura_token` exists (see `apiClient.js`).
 5. Response mapping: `apiClient.normalizeList()` accepts `{items,total,page,pages}` OR `{data,meta}` OR plain arrays — adjust in one place.
@@ -78,6 +78,6 @@ Coupons: `WELCOME10` (10%), `PREMIUM15` (15% over $200), `FREESHIP` (free standa
 Same app, same backend, same database — no second stack. Staff-only area with its own layout/sidebar (in-memory route `/admin/...`; the editor owns `location.hash`).
 
 - Guard: `src/admin/layout.js` `guardAdmin()` blocks logged-out users and `role: customer`. UI hiding is convenience only — every `/api/v1/admin/*` route re-checks action-level permissions server-side (`backend/src/middleware/permissions.ts`).
-- Mock mode (default): dashboard/catalog/orders/etc. render from the real mock catalogue with a "Sample data" label — no fake production numbers. Go live with localStorage `aura_api_base_url=http://localhost:4000`, `aura_use_mock=0`, and log in as a staff demo (e.g. `owner@aura.shop` / `admin@aura.shop`, password `SEED_PASSWORD`, default `aura-demo-1234`).
+- Without a backend URL, dashboard/catalog/orders/etc. render mock data with a "Sample data" label. A configured backend URL uses live APIs; set `aura_use_mock=1` to force a mock preview. Log in with a staff account to access live admin data.
 - Money rules: payments live apart from orders; only provider-confirmed records count; webhooks need `x-webhook-signature` (HMAC, `PAYMENT_WEBHOOK_SECRET`) and are idempotent; refunds complete only on provider confirmation or documented manual completion.
 - Inventory rules: checkout decrements atomically with rollback; reservations hold availability without touching on-hand; dispatch deducts both; every movement is logged with reason + actor.

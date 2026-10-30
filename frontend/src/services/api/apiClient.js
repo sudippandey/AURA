@@ -1,5 +1,5 @@
 // Centralized HTTP client. Components NEVER call fetch directly — use *Api modules.
-// Mock mode is default; set a backend URL to go live (see src/README.md).
+// Without a backend URL, requests use mocks. See src/README.md.
 import { CONFIG, isMockMode } from "../../config.js";
 import { ENDPOINTS } from "./endpoints.js";
 
@@ -7,7 +7,9 @@ const cache = new Map(); // TanStack-Query-style in-memory cache
 const inflight = new Map();
 const API_PREFIX = "/api/v1";
 
-export function apiBaseUrl() { return CONFIG.API_BASE_URL; }
+export function apiBaseUrl() {
+  return String(CONFIG.API_BASE_URL || "").trim().replace(/\/api\/v1\/?$/i, "").replace(/\/+$/, "");
+}
 export function usingMock() { return isMockMode() || !apiBaseUrl(); }
 
 function cacheKey(url, params) { return url + "::" + JSON.stringify(params || {}); }
