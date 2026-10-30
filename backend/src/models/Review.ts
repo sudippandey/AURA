@@ -14,6 +14,7 @@ export interface ReviewDoc extends Document {
   /** True when the author bought the product (non-cancelled order). */
   verified: boolean;
   status: ReviewStatus;
+  response?: { body: string; by: Types.ObjectId; at: Date };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -27,7 +28,8 @@ const reviewSchema = new Schema<ReviewDoc>(
     title: { type: String, required: true, trim: true, minlength: 2, maxlength: 120 },
     body: { type: String, required: true, trim: true, minlength: 2, maxlength: 2000 },
     verified: { type: Boolean, default: false },
-    status: { type: String, enum: REVIEW_STATUSES, default: "visible", index: true }
+    status: { type: String, enum: REVIEW_STATUSES, default: "visible", index: true },
+    response: { body: { type: String, maxlength: 1000 }, by: { type: Schema.Types.ObjectId, ref: "User" }, at: { type: Date } }
   },
   { timestamps: true }
 );

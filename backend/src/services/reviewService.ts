@@ -59,13 +59,21 @@ async function findActiveProduct(ref: string): Promise<ProductDoc> {
   return doc;
 }
 
+export interface AdminReview extends FrontendReview { productId: string; productSlug: string; productName: string; status: ReviewStatus; response: { body: string; by: string; at: string } | null; createdAt: string; }
 export async function listReviews(
   productRef: string,
   page: number,
-  limit: number
-): Promise<{ items: FrontendReview[]; total: number }> {
+  limit: number,
+  status?: ReviewStatus
+): Promise<{ items: FrontendReview[] | AdminReview[]; total: number }> {
+  if (!productRef) {
+    const filter: Record<string, unknown> = {};
+    if (status) filter.status = status;
+    const [total, docs] = await Promise.all([ Review.countDocuments(filter), Review.find(filter).populate('product', 'slug name').sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit) ]);
+    return { items: docs.map((d) => { const p = d.product as unknown as { slug?: string; name?: string } | null; const r = d as unknown as ReviewDoc & { response?: { body: string; by: unknown; at: Date } }; return { ...toFrontendReview(d), productId: String((d.product as unknown as { _id?: unknown })?._id ?? d.product), productSlug: (p && typeof p === 'object' && 'slug' in p ? (p as { slug?: string }).slug : '') ?? '', productName: (p && typeof p === 'object' && 'name' in p ? (p as { name?: string }).name : '') ?? '', status: d.status, response: r.response ? { body: r.response.body, by: String(r.response.by), at: r.response.at instanceof Date ? r.response.at.toISOString() : String(r.response.at) } : null, createdAt: d.createdAt instanceof Date ? d.createdAt.toISOString() : String(d.createdAt) }; }), total };
+  }
   const product = await findActiveProduct(productRef);
-  const filter = { product: product._id, status: "visible" as ReviewStatus };
+  const filter = status ? { product: product._id, status } : { product: product._id, status: "visible" as ReviewStatus };
   const [total, docs] = await Promise.all([
     Review.countDocuments(filter),
     Review.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit)
@@ -120,7 +128,7 @@ export async function updateReview(
 ): Promise<FrontendReview> {
   const review = await findReview(id);
   const isOwner = String(review.user) === String(actor.id);
-  if (!isOwner && actor.role !== "admin") throw new AppError("Review not found.", 404, "NOT_FOUND");
+  if (!isOwner && !["super-admin","admin","customer-support","product-manager"].includes(actor.role)) throw new AppError("Review not found.", 404, "NOT_FOUND");
   const wasCounted = review.status === "visible";
   const oldRating = review.rating;
   if (patch.rating !== undefined) review.rating = patch.rating;
@@ -164,5 +172,14 @@ export async function setReviewStatus(id: string, status: ReviewStatus): Promise
     review.status = status;
     await review.save();
   }
+  return toFrontendReview(review);
+}
+
+export async function moderateReview(id: string, status: ReviewStatus) { return setReviewStatus(id, status); }
+
+export async function respondToReview(id: string, actorId: string, body: string) {
+  const review = await findReview(id);
+  (review as unknown as { response: { body: string; by: unknown; at: Date } }).response = { body: body.trim().slice(0, 1000), by: new Types.ObjectId(actorId), at: new Date() };
+  await review.save();
   return toFrontendReview(review);
 }

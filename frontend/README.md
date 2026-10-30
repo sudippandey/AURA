@@ -1,39 +1,83 @@
-# AURA storefront demo
+# AURA — Premium E-commerce Frontend
 
-AURA is a dependency-free storefront prototype built with native JavaScript modules and CSS. It uses a local mock catalog and simulated checkout; it is not a production commerce system.
+Production-quality demo storefront. Zero-build preview (native ESM) that mirrors a Vite + React + TS architecture 1:1, so you can port it without touching UI logic.
 
-## Run locally
+## Run the preview
+Open the generator — `index.html` boots `src/app.js`. No build step.
+Preview routing is in-memory (the Perchance editor owns `location.hash`);
+the Vite port restores URL routing with React Router using the same route table.
 
-Serve this directory over HTTP so the browser can load JavaScript modules:
+## Port to Vite + React + TS (local)
+The file map is deliberate:
 
-```sh
-python3 -m http.server 8000
-```
+| Preview (this repo) | Vite equivalent |
+|---|---|
+| `src/services/api/apiClient.js` | `src/services/api/apiClient.ts` (axios/fetch wrapper) |
+| `src/services/api/endpoints.ts` | same path, same names |
+| `src/services/api/productApi.ts` | `getProducts, getProductById, getFeaturedProducts, getRelatedProducts, searchProducts, getProductsByCategory, getProductReviews` |
+| `src/hooks/useProducts.ts` | TanStack Query `useQuery` wrappers with identical keys |
+| `src/store/store.js` | Zustand store with identical actions |
+| `src/pages/*` | React Router routes with identical paths |
 
-Then open <http://localhost:8000>. No package installation or build step is required.
+`package.json` deps for local Vite: `react react-dom react-router-dom @tanstack/react-query zustand react-hook-form zod framer-motion lucide-react`.
 
-## Included demo behavior
+Routes: `/`, `/shop`, `/product/:slug`, `/cart`, `/checkout`, `/success`, `/login`, `/register`, `/forgot`, `/account(/:tab)`, `/wishlist`, `/about`, `/contact`, `/faq`, `/shipping`, `/returns`, `/privacy`, `/terms`.
 
-- Product catalog, filters, search, product details, cart, wishlist, and account screens.
-- Mock accounts and orders stored in this browser's local storage.
-- Checkout and payment are simulated; no payment is taken and no order is fulfilled.
-- Mock mode is enabled by default.
+## Connect the AURA backend (done — Stage 8)
 
-Use test-only credentials in this demo. Do not enter real passwords or payment details: browser storage and the client-side mock authentication are not a substitute for a secure backend.
+The companion Express/Mongo API in `backend/` speaks this storefront natively:
 
-## Backend integration
+1. Run it: `cd backend && npm install && npm run seed && npm run dev` (http://localhost:4000).
+2. Point the preview at it: `localStorage.setItem("aura_api_base_url", "http://localhost:4000")`.
+3. Go live: `localStorage.setItem("aura_use_mock", "0")`, then reload the preview.
 
-The frontend defaults to `http://localhost:4000` as its backend origin. Start the backend, then set `aura_use_mock` to `"0"` in local storage to send requests to it. The API client adds the backend's `/api/v1` prefix and unwraps its success envelope. To use another backend, set `window.__API_BASE_URL` before `app.js` loads or save `aura_api_base_url` in local storage; use the origin only (for example `https://api.example.com`).
+What happens in live mode (`src/services/api/*` only — no UI changes):
+- `apiClient.js` prefixes `/api/v1`, unwraps the `{success,data,meta}` envelope
+  (paginated lists surface as `{items,total,page,pages}`, exactly the mock shape),
+  sends `Authorization: Bearer` from `aura_token`, and refreshes an expired
+  access token once via `aura_refresh` before surfacing a 401.
+- `authApi.js` maps `{user, accessToken, refreshToken}` to the mock `{user, token}`
+  shape; logout revokes server-side. Login/register merge the device cart +
+  wishlist into the server ones (`cartSync.js`); every cart/wishlist mutation
+  syncs in the background (debounced replace / fire-and-forget toggle).
+- `productApi.js` caches live products so cart lines resolve offline of extra
+  round-trips; `orderApi.js` translates the checkout draft to the server shape
+  (server prices every order) and clears the server cart after purchase.
+- Account orders tab re-reads from `GET /orders`; profile name saves to the server.
 
-The current backend implements only API info and `GET /health`; catalog, authentication, cart, and order routes are not implemented yet. Leave mock mode enabled for the storefront until those routes are available. Backend CORS defaults permit local frontend servers on ports 5173, 8000, and 8765; configure `CORS_ORIGINS` for other origins.
+Flip back anytime: `localStorage.setItem("aura_use_mock", "1")` (or remove the keys).
 
-The current checkout still calls a simulated payment function. Before handling real customers or payments, implement server-side authentication, authorization, validation, order and inventory management, and payment-provider integration. Do not treat client-side totals or order data as authoritative.
+## Connect YOUR OWN backend API instead
+1. Set the base URL — one of:
+   - `localStorage.setItem("aura_api_base_url", "https://api.yours.com")`, or
+   - define `window.__API_BASE_URL = "https://api.yours.com"` before `src/app.js` loads, or
+   - edit `CONFIG.API_URL` in `src/config.js`.
+2. Disable mock mode: `localStorage.setItem("aura_use_mock", "0")` (or set `USE_MOCK: false`).
+3. Match endpoints in `src/services/api/endpoints.js`, or keep your backend REST shape and only edit the `*Api.js` mappers.
+4. Auth: `authApi.js` sends `Authorization: Bearer <token>` automatically when `aura_token` exists (see `apiClient.js`).
+5. Response mapping: `apiClient.normalizeList()` accepts `{items,total,page,pages}` OR `{data,meta}` OR plain arrays — adjust in one place.
 
-## Project layout
+### Function inventory (all mock-backed, UI never calls fetch)
+- `productApi`: `getProducts({page,limit,sort,filters,search})`, `getProductById(id)`, `getFeaturedProducts()`, `getTrendingProducts()`, `getBestSellers()`, `getNewArrivals()`, `getRelatedProducts(id)`, `searchProducts(q)`, `getProductsByCategory(id)`, `getProductReviews(id)`
+- `categoryApi`: `getCategories()`, `getCategoryById(id)`
+- `cartApi`: `calculateTotals(lines,{couponCode,shippingId})`, `validateCoupon(code,subtotal)`, `fetchCart/syncCart`
+- `authApi`: `loginApi`, `registerApi`, `forgotApi`
+- `orderApi`: `createOrderApi`, `getOrdersApi`
 
-- `app.js`, `index.html`, `styles.css`: browser entrypoint, router, and styling.
-- `api/`: mock-backed API functions and the HTTP client.
-- `components/`, `hooks/`, `lib/`: UI helpers, cached data helpers, formatting, and validation.
-- `pages/`: storefront routes.
-- `mocks/`: demo products, categories, and reviews.
-- `store.js`: cart, account, and browser persistence.
+### Product schema
+`{ id, name, slug, description, price, originalPrice, images[], category, brand, rating, reviewCount, stock, featured, variants[], specifications{}, createdAt, tags[], colors[{name,hex}], sizes[] }`
+
+## Payments (demo ↔ real)
+Checkout calls `simulatePayment()` in `src/pages/checkout.js`. Replace its body with Stripe/Adyen SDK — the form validation, order creation (`orderApi.createOrderApi`) and success page stay unchanged.
+
+## Demo shortcuts
+Coupons: `WELCOME10` (10%), `PREMIUM15` (15% over $200), `FREESHIP` (free standard). Auth: register a fresh account, or login with any registered one. Orders persist to `localStorage aura_orders`. Cart/wishlist/recent persist across refresh.
+
+## Admin dashboard (`/admin`)
+
+Same app, same backend, same database — no second stack. Staff-only area with its own layout/sidebar (in-memory route `/admin/...`; the editor owns `location.hash`).
+
+- Guard: `src/admin/layout.js` `guardAdmin()` blocks logged-out users and `role: customer`. UI hiding is convenience only — every `/api/v1/admin/*` route re-checks action-level permissions server-side (`backend/src/middleware/permissions.ts`).
+- Mock mode (default): dashboard/catalog/orders/etc. render from the real mock catalogue with a "Sample data" label — no fake production numbers. Go live with localStorage `aura_api_base_url=http://localhost:4000`, `aura_use_mock=0`, and log in as a staff demo (e.g. `owner@aura.shop` / `admin@aura.shop`, password `SEED_PASSWORD`, default `aura-demo-1234`).
+- Money rules: payments live apart from orders; only provider-confirmed records count; webhooks need `x-webhook-signature` (HMAC, `PAYMENT_WEBHOOK_SECRET`) and are idempotent; refunds complete only on provider confirmation or documented manual completion.
+- Inventory rules: checkout decrements atomically with rollback; reservations hold availability without touching on-hand; dispatch deducts both; every movement is logged with reason + actor.

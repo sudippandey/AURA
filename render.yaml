@@ -14,6 +14,8 @@ services:
         generateValue: true
       - key: JWT_REFRESH_SECRET
         generateValue: true
+      - key: PAYMENT_WEBHOOK_SECRET
+        generateValue: true
       - key: MONGODB_URI
         sync: false
       - key: CORS_ORIGINS

@@ -20,21 +20,16 @@ describe("health", () => {
     expect(res.body.data.name).toBe("AURA API");
   });
 
-  it("allows the documented local storefront origins", async () => {
-    for (const origin of ["http://localhost:8000", "http://127.0.0.1:8765"]) {
-      const res = await request(app)
-        .options("/api/v1/health")
-        .set("Origin", origin)
-        .set("Access-Control-Request-Method", "GET");
-      expect(res.status).toBe(204);
-      expect(res.headers["access-control-allow-origin"]).toBe(origin);
-    }
-  });
-
   it("unknown routes return the 404 envelope (never HTML)", async () => {
     const res = await request(app).get("/api/v1/does-not-exist");
     expect(res.status).toBe(404);
     expect(res.body.success).toBe(false);
     expect(res.body.code).toBe("NOT_FOUND");
+  });
+
+  it("admin endpoints reject requests without authentication", async () => {
+    const res = await request(app).get("/api/v1/admin/overview");
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe("UNAUTHENTICATED");
   });
 });

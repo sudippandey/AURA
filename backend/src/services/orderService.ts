@@ -5,10 +5,11 @@ import { Order, ORDER_STATUSES, type OrderDoc, type OrderStatus } from "../model
 import { Product, availableStock, type ProductDoc } from "../models/Product.js";
 import { priceOrder, SHIPPING_METHODS, type ShippingMethod } from "../utils/pricing.js";
 import { logMovement } from "./inventoryService.js";
+import { logger } from "../utils/logger.js";
 
 /** Roles that may view/fulfil any order (owner always sees their own). */
-export const FULFILMENT_ROLES = ["admin", "inventory-manager", "warehouse-employee"] as const;
-export const ORDER_ADMIN_ROLES = ["admin", "inventory-manager"] as const;
+export const FULFILMENT_ROLES = ["super-admin", "admin", "order-manager", "inventory-manager", "customer-support", "finance-manager", "analyst", "warehouse-employee"] as const;
+export const ORDER_ADMIN_ROLES = ["super-admin", "admin", "order-manager", "inventory-manager"] as const;
 
 /** Exact shape the storefront checkout/success/account pages read. */
 export interface FrontendOrder {
@@ -30,6 +31,11 @@ export interface FrontendOrder {
   createdAt: string;
 }
 
+export interface AdminOrder extends FrontendOrder { orderNumber: string; userId: string; history: Array<{ status: OrderStatus; at: string; note?: string; by?: string }>; notes: Array<{ body: string; by: string; at: string }>; couponCode: string | null; createdAt: string; updatedAt: string; }
+export function toAdminOrder(o: OrderDoc): AdminOrder {
+  const f = toFrontendOrder(o);
+  return { ...f, orderNumber: o.orderNumber, userId: String(o.user), history: (o.history ?? []).map((h) => ({ status: h.status, at: h.at instanceof Date ? h.at.toISOString() : String(h.at), ...(h.note ? { note: h.note } : {}), ...((h as { by?: string }).by ? { by: (h as { by?: string }).by } : {}) })), notes: ((o as unknown as { notes?: Array<{ body: string; by: string; at: Date }> }).notes ?? []).map((n) => ({ body: n.body, by: n.by, at: n.at instanceof Date ? n.at.toISOString() : String(n.at) })), couponCode: o.couponCode ?? null, createdAt: o.createdAt instanceof Date ? o.createdAt.toISOString() : String(o.createdAt), updatedAt: (o as unknown as { updatedAt?: Date }).updatedAt instanceof Date ? ((o as unknown as { updatedAt?: Date }).updatedAt as Date).toISOString() : String((o as unknown as { updatedAt?: Date }).updatedAt ?? o.createdAt) };
+}
 export function toFrontendOrder(o: OrderDoc): FrontendOrder {
   return {
     id: o.orderNumber,
@@ -298,8 +304,8 @@ export async function updateOrderStatus(
     throw new AppError(`Order is already ${cur}.`, 400, "IMMUTABLE_ORDER");
   }
 
-  const staff = (STAFF_FULFIL as readonly string[]).includes(role);
-  const canCancelOrder = (ORDER_ADMIN_ROLES as readonly string[]).includes(role);
+  const staff = (STAFF_FULFIL as readonly string[]).includes(role) || ["super-admin", "admin", "order-manager", "inventory-manager", "warehouse-employee"].includes(role);
+  const canCancelOrder = (ORDER_ADMIN_ROLES as readonly string[]).includes(role) || ["super-admin", "admin", "order-manager"].includes(role);
   const restock = async (): Promise<void> => {
     for (const l of doc.items) {
       await Product.updateOne({ _id: l.product }, { $inc: { stock: l.qty } });
@@ -324,20 +330,70 @@ export async function updateOrderStatus(
     } else {
       throw new AppError("This order can no longer be cancelled.", 400, "CANCEL_CLOSED");
     }
-  } else if (next === "shipped") {
-    if (!staff || cur !== "processing") throw new AppError("Only processing orders can ship.", 400, "BAD_TRANSITION");
-  } else if (next === "delivered") {
-    if (!staff || cur !== "shipped") throw new AppError("Only shipped orders can be delivered.", 400, "BAD_TRANSITION");
+  } else if (["confirmed", "processing", "packed", "shipped", "delivered"].includes(next)) {
+    if (!staff) throw new AppError("Only staff can advance fulfilment.", 403, "FORBIDDEN");
+    const flow: OrderStatus[] = ["pending", "confirmed", "processing", "packed", "shipped", "delivered"];
+    const ci = flow.indexOf(cur); const ni = flow.indexOf(next);
+    if (ci === -1) throw new AppError("Order is in a terminal state.", 400, "IMMUTABLE_ORDER");
+    if (ni <= ci) throw new AppError("Orders cannot move backwards.", 400, "BAD_TRANSITION");
+    if (ni > ci + 2) throw new AppError("Orders must advance step by step.", 400, "BAD_TRANSITION");
+    if (next === "shipped" && cur === "processing") { /* legacy path: processing -> shipped allowed */ }
+  } else if (next === "failed") {
+    if (!staff) throw new AppError("Only staff can mark orders failed.", 403, "FORBIDDEN");
+    if (cur !== "pending" && cur !== "confirmed") throw new AppError("Only unfulfilled orders can fail.", 400, "BAD_TRANSITION");
+    await restock();
+  } else if (next === "returned" || next === "partially_returned") {
+    if (!staff) throw new AppError("Only staff can record returns.", 403, "FORBIDDEN");
+    if (cur !== "delivered") throw new AppError("Only delivered orders can be returned.", 400, "BAD_TRANSITION");
   } else if (next === "refunded") {
-    if (role !== "admin" || cur !== "delivered") {
-      throw new AppError("Only delivered orders can be refunded (admin).", 400, "BAD_TRANSITION");
+    if (role !== "admin" && role !== "super-admin" && role !== "finance-manager") {
+      throw new AppError("Only finance staff can refund delivered orders.", 403, "FORBIDDEN");
     }
-  } else if (next === "pending" || next === "processing") {
+    if (cur !== "delivered" && cur !== "returned" && cur !== "partially_returned") {
+      throw new AppError("Only delivered/returned orders can be refunded.", 400, "BAD_TRANSITION");
+    }
+  } else if (next === "pending" || next === "confirmed") {
     throw new AppError("Orders cannot move backwards.", 400, "BAD_TRANSITION");
   }
 
   doc.status = next;
-  doc.history.push({ status: next, at: new Date(), ...(note ? { note: note.slice(0, 300) } : {}) });
+  doc.history.push({ status: next, at: new Date(), ...(note ? { note: note.slice(0, 300) } : {}), by: actor.id } as never);
   await doc.save();
+  try {
+    const { notify } = await import("./notificationService.js");
+    await notify("order", "Order " + next, doc.orderNumber + " moved to " + next, "order", doc.orderNumber);
+  } catch (err) {
+    logger.warn("[orders] Failed to record order notification:", err);
+  }
   return toFrontendOrder(doc);
+}
+
+export async function listAdminOrders(filter: { status?: OrderStatus; q?: string; from?: string; to?: string; page: number; limit: number }): Promise<{ items: AdminOrder[]; total: number }> {
+  const q: Record<string, unknown> = {};
+  if (filter.status) q.status = filter.status;
+  if (filter.from || filter.to) { const c: Record<string, unknown> = {}; if (filter.from) c.$gte = new Date(filter.from); if (filter.to) c.$lte = new Date(filter.to); q.createdAt = c; }
+  if (filter.q) { const rx = new RegExp(filter.q.trim().replace(/[.*+?^()|[\]\\$]/g, (m) => '\\' + m), 'i'); q.$or = [{ orderNumber: rx }, { 'customer.email': rx }, { 'customer.firstName': rx }, { 'customer.lastName': rx }]; }
+  const [total, docs] = await Promise.all([ Order.countDocuments(q), Order.find(q).sort({ createdAt: -1 }).skip((filter.page - 1) * filter.limit).limit(filter.limit) ]);
+  return { items: docs.map(toAdminOrder), total };
+}
+
+export async function getAdminOrder(ref: string): Promise<AdminOrder> {
+  const doc = await findOrder(ref);
+  if (!doc) throw new AppError('Order not found.', 404, 'NOT_FOUND');
+  return toAdminOrder(doc);
+}
+
+export async function addOrderNote(ref: string, actorId: string, body: string): Promise<AdminOrder> {
+  const doc = await findOrder(ref);
+  if (!doc) throw new AppError('Order not found.', 404, 'NOT_FOUND');
+  if (!body || !body.trim()) throw new AppError('Note cannot be empty.', 400, 'NOTE_REQUIRED');
+  (doc as unknown as { notes: Array<{ body: string; by: string; at: Date }> }).notes.push({ body: body.trim().slice(0, 1000), by: actorId, at: new Date() });
+  await doc.save();
+  try {
+    const { audit } = await import('./auditService.js');
+    await audit({ actorId, action: 'order.note', entity: 'order', entityId: doc.orderNumber, after: { body: body.slice(0, 200) } });
+  } catch (err) {
+    logger.warn("[orders] Failed to audit order note:", err);
+  }
+  return toAdminOrder(doc);
 }

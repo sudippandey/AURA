@@ -7,7 +7,7 @@ import { slugify } from "../utils/slug.js";
 export type ProductSort = "featured" | "newest" | "price-asc" | "price-desc" | "rating" | "bestselling";
 
 /** Roles allowed to manage the catalogue (write) and to preview inactive items. */
-export const CATALOG_WRITERS = ["admin", "inventory-manager"] as const;
+export const CATALOG_WRITERS = ["super-admin", "admin", "product-manager", "inventory-manager"] as const;
 
 export interface ProductListQuery {
   page: number;
@@ -560,4 +560,9 @@ export async function deleteProduct(ref: string): Promise<void> {
   // Order line-items snapshot product data at purchase time (Stage 5), so catalogue
   // deletes stay hard deletes. Reviews (Stage 5) cascade separately.
   await (doc as ProductDoc).deleteOne();
+}
+
+export async function listBrands(): Promise<Array<{ name: string; products: number }>> {
+  const rows = await Product.aggregate<{ _id: string; n: number }>([{ $match: { isActive: true } }, { $group: { _id: '$brand', n: { $sum: 1 } } }, { $sort: { _id: 1 } }]);
+  return rows.map((r) => ({ name: r._id, products: r.n }));
 }

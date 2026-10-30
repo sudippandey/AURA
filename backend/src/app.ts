@@ -31,7 +31,7 @@ export function createApp(): express.Express {
   const origins = env.CORS_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean);
   app.use(cors({ origin: origins, credentials: true }));
 
-  // Global rate limit; authentication routes apply tighter route-specific limits.
+  // Global rate limit (tighter per-route limits, e.g. auth, arrive in Stage 2).
   const limiter = rateLimit({
     windowMs: env.RATE_LIMIT_WINDOW_MS,
     limit: env.RATE_LIMIT_MAX,
@@ -41,7 +41,7 @@ export function createApp(): express.Express {
   });
   app.use("/api/", limiter);
 
-  // Body parsing with size caps (file uploads are not currently supported).
+  // Body parsing with size caps (no file uploads in Stage 1).
   app.use(express.json({ limit: "256kb" }));
   app.use(express.urlencoded({ extended: false, limit: "256kb" }));
 

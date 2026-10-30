@@ -1,12 +1,23 @@
 import { Schema, model, type Document, type Model, type Types } from "mongoose";
 
-/** Fulfilment lifecycle: pending → processing → shipped → delivered, with cancel/refund exits. */
+/**
+ * Fulfilment lifecycle:
+ * pending → confirmed → processing → packed → shipped → delivered,
+ * with cancelled / failed / returned / partially_returned / refunded exits.
+ * Legacy orders created before this change use the shorter
+ * pending/processing/shipped/delivered path and remain valid.
+ */
 export const ORDER_STATUSES = [
   "pending",
+  "confirmed",
   "processing",
+  "packed",
   "shipped",
   "delivered",
   "cancelled",
+  "failed",
+  "returned",
+  "partially_returned",
   "refunded"
 ] as const;
 
@@ -28,6 +39,13 @@ export interface StatusEvent {
   status: OrderStatus;
   at: Date;
   note?: string;
+  by?: string;
+}
+
+export interface OrderNote {
+  body: string;
+  by: string;
+  at: Date;
 }
 
 export interface OrderDoc extends Document {
@@ -46,6 +64,7 @@ export interface OrderDoc extends Document {
   total: number;
   status: OrderStatus;
   history: StatusEvent[];
+  notes: OrderNote[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -67,7 +86,7 @@ const orderItemSchema = new Schema<OrderItem>(
 
 const orderSchema = new Schema<OrderDoc>(
   {
-    orderNumber: { type: String, required: true, unique: true, index: true },
+    orderNumber: { type: String, required: true, unique: true },
     user: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
     items: { type: [orderItemSchema], required: true },
     customer: {
@@ -102,8 +121,15 @@ const orderSchema = new Schema<OrderDoc>(
         {
           status: { type: String, enum: ORDER_STATUSES, required: true },
           at: { type: Date, default: Date.now },
-          note: { type: String, maxlength: 300 }
+          note: { type: String, maxlength: 300 },
+          by: { type: String, maxlength: 80 }
         }
+      ],
+      default: []
+    },
+    notes: {
+      type: [
+        { body: { type: String, required: true, maxlength: 1000 }, by: { type: String, required: true }, at: { type: Date, default: Date.now } }
       ],
       default: []
     }

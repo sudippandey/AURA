@@ -3,10 +3,10 @@ import request from "supertest";
 import mongoose from "mongoose";
 import express from "express";
 import { createApp } from "../src/app.js";
-import { getTestDbUri } from "./testDb.js";
 import { User } from "../src/models/User.js";
 import { requireAuth, requireRole } from "../src/middleware/auth.js";
 import { hashPassword } from "../src/utils/password.js";
+import { getTestDbUri } from "./testDb.js";
 
 const uri = getTestDbUri();
 const app = createApp();
