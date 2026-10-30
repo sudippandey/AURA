@@ -21,6 +21,605 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Success"
+  /api/v1/auth/register:
+    post:
+      summary: Register a customer
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name: { type: string, minLength: 2, maxLength: 80 }
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8, maxLength: 72 }
+      responses:
+        "201": { description: Created + token pair, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+        "400": { description: Validation error, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "409": { description: Email taken, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /api/v1/auth/login:
+    post:
+      summary: Log in
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        "200": { description: Token pair, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+        "401": { description: Bad credentials, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "403": { description: Disabled account, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /api/v1/auth/refresh:
+    post:
+      summary: Rotate a refresh token (reuse = theft → all sessions revoked)
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        "200": { description: New token pair, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+        "401": { description: Invalid/reused token, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /api/v1/auth/logout:
+    post:
+      summary: Revoke a refresh token (idempotent)
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refreshToken: { type: string }
+      responses:
+        "200": { description: Logged out, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+  /api/v1/auth/me:
+    get:
+      summary: Current user (Bearer access token)
+      tags: [Auth]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Profile, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+        "401": { description: Missing/invalid token, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    patch:
+      summary: Update profile name (role/email immutable here)
+      tags: [Auth]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 2, maxLength: 80 }
+      responses:
+        "200": { description: Updated profile, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+  /api/v1/auth/forgot-password:
+    post:
+      summary: Request a reset (always 200 — no enumeration; dev returns resetToken)
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        "200": { description: Accepted, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+  /api/v1/auth/reset-password:
+    post:
+      summary: Reset password with a token (revokes all sessions)
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token: { type: string }
+                password: { type: string, minLength: 8, maxLength: 72 }
+      responses:
+        "200": { description: Reset complete, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+        "400": { description: Invalid/expired token, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /api/v1/products:
+    get:
+      summary: List products (search, filter, sort, paginate)
+      tags: [Catalog]
+      parameters:
+        - { name: search, in: query, schema: { type: string } }
+        - { name: sort, in: query, schema: { type: string, enum: [featured, newest, price-asc, price-desc, rating, bestselling], default: featured } }
+        - { name: category, in: query, schema: { type: string }, description: Category id or slug }
+        - { name: categories, in: query, schema: { type: string }, description: Repeat or comma-separate }
+        - { name: brands, in: query, schema: { type: string } }
+        - { name: minPrice, in: query, schema: { type: number } }
+        - { name: maxPrice, in: query, schema: { type: number } }
+        - { name: minRating, in: query, schema: { type: number } }
+        - { name: inStock, in: query, schema: { type: boolean } }
+        - { name: colors, in: query, schema: { type: string } }
+        - { name: sizes, in: query, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, default: 9 } }
+        - { name: all, in: query, schema: { type: boolean }, description: Writers with token preview inactive items }
+      responses:
+        "200": { description: Paginated products, content: { application/json: { schema: { $ref: "#/components/schemas/PaginatedProducts" } } } }
+    post:
+      summary: Create a product
+      tags: [Catalog]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProductInput" }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+        "401": { description: Missing token, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "403": { description: Not a catalogue writer, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: Unknown category, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "409": { description: Slug taken, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /api/v1/products/featured:
+    get:
+      summary: Featured rail
+      tags: [Catalog]
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 8 } }
+      responses:
+        "200": { description: Products, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+  /api/v1/products/trending:
+    get:
+      summary: Trending rail (tag)
+      tags: [Catalog]
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 4 } }
+      responses:
+        "200": { description: Products, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+  /api/v1/products/bestsellers:
+    get:
+      summary: Best-sellers rail (soldCount, then reviews)
+      tags: [Catalog]
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 4 } }
+      responses:
+        "200": { description: Products, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+  /api/v1/products/new:
+    get:
+      summary: New arrivals rail
+      tags: [Catalog]
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 4 } }
+      responses:
+        "200": { description: Products, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+  /api/v1/products/search:
+    get:
+      summary: Type-ahead search (name/brand/description/tags)
+      tags: [Catalog]
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, default: 8 } }
+      responses:
+        "200": { description: Products, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+  /api/v1/products/slug/{slug}:
+    get:
+      summary: Product by slug
+      tags: [Catalog]
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Product, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+        "404": { description: Not found, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /api/v1/products/{id}:
+    get:
+      summary: Product by id or slug
+      tags: [Catalog]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Product, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+        "404": { description: Not found, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    patch:
+      summary: Update a product
+      tags: [Catalog]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProductInput" }
+      responses:
+        "200": { description: Updated product, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+        "403": { description: Not a catalogue writer, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: Not found, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    delete:
+      summary: Delete a product (hard delete; orders snapshot at purchase time)
+      tags: [Catalog]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Deleted, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+        "403": { description: Not a catalogue writer, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /api/v1/products/{id}/related:
+    get:
+      summary: Related products (same category/brand)
+      tags: [Catalog]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, default: 4 } }
+      responses:
+        "200": { description: Products, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+  /api/v1/categories:
+    get:
+      summary: List categories with live product counts
+      tags: [Catalog]
+      responses:
+        "200": { description: Categories, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+    post:
+      summary: Create a category
+      tags: [Catalog]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CategoryInput" }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+        "403": { description: Not a catalogue writer, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "409": { description: Slug taken, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /api/v1/categories/{ref}:
+    get:
+      summary: Category by id or slug
+      tags: [Catalog]
+      parameters:
+        - { name: ref, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Category, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+        "404": { description: Not found, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    patch:
+      summary: Update a category
+      tags: [Catalog]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: ref, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CategoryInput" }
+      responses:
+        "200": { description: Updated category, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+        "403": { description: Not a catalogue writer, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    delete:
+      summary: Delete a category (blocked while products/children reference it)
+      tags: [Catalog]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: ref, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Deleted, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+        "409": { description: In use (CATEGORY_IN_USE / CATEGORY_HAS_CHILDREN), content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /api/v1/categories/{ref}/products:
+    get:
+      summary: Paginated products in one category
+      tags: [Catalog]
+      parameters:
+        - { name: ref, in: path, required: true, schema: { type: string } }
+        - { name: sort, in: query, schema: { type: string, enum: [featured, newest, price-asc, price-desc, rating, bestselling], default: featured } }
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, default: 9 } }
+      responses:
+        "200": { description: Paginated products, content: { application/json: { schema: { $ref: "#/components/schemas/PaginatedProducts" } } } }
+  /api/v1/cart:
+    get:
+      summary: Current cart (auth; empty shape when never saved)
+      tags: [Shopper]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Cart, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+        "401": { description: Missing token, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    post:
+      summary: Sync merge — incoming lines add on, capped at availability
+      tags: [Shopper]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CartMergeInput" }
+      responses:
+        "200": { description: Merged cart, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+        "400": { description: Invalid lines (see details), content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: Unknown product, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    put:
+      summary: Full replace (qty edits, removals, or [] to clear)
+      tags: [Shopper]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CartReplaceInput" }
+      responses:
+        "200": { description: Cart, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+    patch:
+      summary: Coupon/shipping prefs (stored verbatim; priced in Stage 5)
+      tags: [Shopper]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CartPrefs" }
+      responses:
+        "200": { description: Cart, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+    delete:
+      summary: Clear all lines (prefs kept)
+      tags: [Shopper]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Cleared cart, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+  /api/v1/wishlist:
+    get:
+      summary: Wishlist product ids (auth)
+      tags: [Shopper]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: "{ items: string[] }", content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+  /api/v1/wishlist/toggle:
+    post:
+      summary: Toggle a product in the wishlist
+      tags: [Shopper]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productId]
+              properties:
+                productId: { type: string, description: Product id or slug }
+      responses:
+        "200": { description: "{ wished, items }", content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+        "404": { description: Unknown product, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /api/v1/wishlist/{productId}:
+    delete:
+      summary: Remove from wishlist (idempotent; id or slug)
+      tags: [Shopper]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: productId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: "{ items }", content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+  /api/v1/orders:
+    post:
+      summary: Checkout — from cart (default) or explicit buy-now items
+      tags: [Orders]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CheckoutInput" }
+      responses:
+        "201": { description: Placed order (storefront shape), content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+        "400": { description: Empty cart / stock / validation, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: Unknown product, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "409": { description: Late stock race — review cart, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    get:
+      summary: Own history (array) or ?all=true staff list (paginated, ?status=)
+      tags: [Orders]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: all, in: query, schema: { type: boolean } }
+        - { name: status, in: query, schema: { type: string, enum: [pending, processing, shipped, delivered, cancelled, refunded] } }
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, default: 20 } }
+      responses:
+        "200": { description: Orders, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+  /api/v1/orders/{ref}:
+    get:
+      summary: Order detail (owner or fulfilment staff; id or ORD-number)
+      tags: [Orders]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: ref, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Order, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+        "404": { description: Not found, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /api/v1/orders/{ref}/status:
+    patch:
+      summary: Cancel (owner of fresh order) or fulfil/refund (staff matrix)
+      tags: [Orders]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: ref, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [pending, processing, shipped, delivered, cancelled, refunded] }
+                note: { type: string, maxLength: 300 }
+      responses:
+        "200": { description: Updated order, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+        "400": { description: Illegal transition, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /api/v1/inventory/adjust:
+    post:
+      summary: Absolute stock-take (logs the signed delta)
+      tags: [Inventory]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productId, stock, reason]
+              properties:
+                productId: { type: string, description: Product id or slug }
+                stock: { type: integer, minimum: 0, maximum: 1000000 }
+                reason: { type: string, maxLength: 300 }
+      responses:
+        "201": { description: Updated counts, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+        "403": { description: Not stock staff, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /api/v1/inventory/movements:
+    get:
+      summary: Stock ledger, newest first
+      tags: [Inventory]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: productId, in: query, schema: { type: string } }
+        - { name: type, in: query, schema: { type: string, enum: [sale, restock, adjustment] } }
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, default: 20 } }
+      responses:
+        "200": { description: Paginated movements, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+  /api/v1/inventory/low-stock:
+    get:
+      summary: Products at/below threshold, worst first
+      tags: [Inventory]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 50 } }
+      responses:
+        "200": { description: Low-stock list, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+  /api/v1/inventory/overview:
+    get:
+      summary: Headline inventory counts
+      tags: [Inventory]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Overview, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+  /api/v1/products/{id}/reviews:
+    get:
+      summary: Visible reviews for a product (public, newest first)
+      tags: [Reviews]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, default: 10 } }
+      responses:
+        "200": { description: Paginated reviews, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+    post:
+      summary: Review a product (auth; one per user; verified auto-detected)
+      tags: [Reviews]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReviewInput" }
+      responses:
+        "201": { description: Created review, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+        "409": { description: Already reviewed, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /api/v1/reviews/{id}:
+    put:
+      summary: Edit a review (owner or admin)
+      tags: [Reviews]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReviewInput" }
+      responses:
+        "200": { description: Updated review, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+    delete:
+      summary: Delete a review (owner or admin)
+      tags: [Reviews]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Deleted, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+  /api/v1/reviews/{id}/status:
+    patch:
+      summary: Moderate visibility (admin)
+      tags: [Reviews]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [visible, hidden, flagged] }
+      responses:
+        "200": { description: Updated review, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+  /api/v1/admin/users:
+    get:
+      summary: User directory (admin; ?q=&role=)
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: role, in: query, schema: { type: string, enum: [customer, admin, inventory-manager, warehouse-employee] } }
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, default: 20 } }
+      responses:
+        "200": { description: Paginated users, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+        "403": { description: Admins only, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /api/v1/admin/users/{id}:
+    patch:
+      summary: Change role / activation (admin; never self)
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role: { type: string, enum: [customer, admin, inventory-manager, warehouse-employee] }
+                isActive: { type: boolean }
+      responses:
+        "200": { description: Updated user, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
+  /api/v1/admin/stats:
+    get:
+      summary: Dashboard stats (admin)
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Stats, content: { application/json: { schema: { $ref: "#/components/schemas/Success" } } } }
   /api/v1/health:
     get:
       summary: Liveness + dependency status
@@ -56,6 +655,11 @@ paths:
                             type: string
                             example: connected
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
   schemas:
     Success:
       type: object
@@ -77,6 +681,292 @@ components:
               type: integer
             limit:
               type: integer
+    PaginatedProducts:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Product" }
+        meta:
+          type: object
+          properties:
+            total: { type: integer }
+            page: { type: integer }
+            pages: { type: integer }
+            limit: { type: integer }
+    Movement:
+      type: object
+      properties:
+        id: { type: string }
+        productId: { type: string }
+        productSlug: { type: string }
+        productName: { type: string }
+        type: { type: string, enum: [sale, restock, adjustment] }
+        qty: { type: integer, description: Signed delta }
+        balance: { type: integer }
+        reason: { type: string }
+        orderNumber: { type: string }
+        createdAt: { type: string, format: date-time }
+    Review:
+      type: object
+      properties:
+        id: { type: string }
+        author: { type: string }
+        rating: { type: integer }
+        title: { type: string }
+        body: { type: string }
+        date: { type: string, format: date-time }
+        verified: { type: boolean }
+    ReviewInput:
+      type: object
+      required: [rating, title, body]
+      properties:
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        title: { type: string, minLength: 2, maxLength: 120 }
+        body: { type: string, minLength: 2, maxLength: 2000 }
+    AdminUser:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        email: { type: string }
+        role: { type: string }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+    Order:
+      type: object
+      properties:
+        id: { type: string, description: ORD-number }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              name: { type: string }
+              price: { type: number }
+              qty: { type: integer }
+              color: { type: string, nullable: true }
+              size: { type: string, nullable: true }
+              image: { type: string }
+        totals:
+          type: object
+          properties:
+            subtotal: { type: number }
+            discount: { type: number }
+            shipping: { type: number }
+            tax: { type: number }
+            total: { type: number }
+        customer:
+          type: object
+          properties:
+            firstName: { type: string }
+            lastName: { type: string }
+            email: { type: string }
+            phone: { type: string }
+        shipping:
+          type: object
+          properties:
+            address: { type: string }
+            city: { type: string }
+            zip: { type: string }
+            country: { type: string }
+            method: { type: string }
+        payment:
+          type: object
+          properties:
+            method: { type: string }
+            id: { type: string }
+        status: { type: string, enum: [pending, processing, shipped, delivered, cancelled, refunded] }
+        createdAt: { type: string, format: date-time }
+    CheckoutInput:
+      type: object
+      required: [customer, shipping, payment]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items: { $ref: "#/components/schemas/CartLineInput" }
+          description: Omitted → checkout the cart (cleared on success)
+        customer:
+          type: object
+          required: [firstName, lastName, email]
+          properties:
+            firstName: { type: string }
+            lastName: { type: string }
+            email: { type: string, format: email }
+            phone: { type: string }
+        shipping:
+          type: object
+          required: [address, city, zip, country, method]
+          properties:
+            address: { type: string }
+            city: { type: string }
+            zip: { type: string }
+            country: { type: string }
+            method: { type: string, enum: [standard, express, overnight] }
+        payment:
+          type: object
+          required: [method]
+          properties:
+            method: { type: string, enum: [card, paypal, cod] }
+            reference: { type: string, description: Provider payment id (simulated until SDK lands) }
+        couponCode: { type: string, nullable: true }
+    CartLine:
+      type: object
+      properties:
+        productId: { type: string }
+        slug: { type: string }
+        name: { type: string }
+        brand: { type: string }
+        price: { type: number }
+        image: { type: string }
+        qty: { type: integer }
+        color: { type: string, nullable: true }
+        size: { type: string, nullable: true }
+        available: { type: integer }
+        lineTotal: { type: number }
+    Cart:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/CartLine" }
+        count: { type: integer }
+        subtotal: { type: number }
+        couponCode: { type: string, nullable: true }
+        shippingId: { type: string }
+        updatedAt: { type: string, format: date-time, nullable: true }
+    CartLineInput:
+      type: object
+      required: [productId, qty]
+      properties:
+        productId: { type: string, description: Product id or slug }
+        qty: { type: integer, minimum: 1, maximum: 99 }
+        color: { type: string, nullable: true }
+        size: { type: string, nullable: true }
+    CartMergeInput:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items: { $ref: "#/components/schemas/CartLineInput" }
+        couponCode: { type: string, nullable: true }
+        shippingId: { type: string }
+    CartReplaceInput:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items: { $ref: "#/components/schemas/CartLineInput" }
+    CartPrefs:
+      type: object
+      properties:
+        couponCode: { type: string, nullable: true }
+        shippingId: { type: string }
+    Product:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        slug: { type: string }
+        description: { type: string }
+        price: { type: number }
+        originalPrice: { type: number, nullable: true }
+        images: { type: array, items: { type: string } }
+        category: { type: string, description: Category slug }
+        brand: { type: string }
+        rating: { type: number }
+        reviewCount: { type: integer }
+        stock: { type: integer, description: Available units (stock minus Stage 6 holds) }
+        featured: { type: boolean }
+        variants:
+          type: array
+          items:
+            type: object
+            properties:
+              sku: { type: string }
+              name: { type: string }
+              color: { type: string }
+              size: { type: string }
+              price: { type: number, nullable: true }
+              stock: { type: integer }
+              image: { type: string }
+        specifications: { type: object, additionalProperties: { type: string } }
+        createdAt: { type: string, format: date-time }
+        tags: { type: array, items: { type: string } }
+        colors:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              hex: { type: string }
+        sizes: { type: array, items: { type: string } }
+    ProductInput:
+      type: object
+      required: [name, brand, category, price]
+      properties:
+        name: { type: string, minLength: 2, maxLength: 120 }
+        slug: { type: string, description: URL-safe; auto-derived from name when omitted }
+        description: { type: string }
+        brand: { type: string }
+        category: { type: string, description: Category id or slug }
+        price: { type: number }
+        originalPrice: { type: number, nullable: true }
+        images: { type: array, items: { type: string } }
+        stock: { type: integer }
+        lowStockThreshold: { type: integer }
+        featured: { type: boolean }
+        isActive: { type: boolean }
+        tags: { type: array, items: { type: string } }
+        colors:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              hex: { type: string }
+        sizes: { type: array, items: { type: string } }
+        variants:
+          type: array
+          items:
+            type: object
+            required: [sku]
+            properties:
+              sku: { type: string }
+              name: { type: string }
+              color: { type: string }
+              size: { type: string }
+              price: { type: number, nullable: true }
+              stock: { type: integer }
+              image: { type: string }
+        specifications: { type: object, additionalProperties: { type: string } }
+    Category:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        slug: { type: string }
+        image: { type: string }
+        desc: { type: string }
+        productCount: { type: integer }
+    CategoryInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 2, maxLength: 80 }
+        slug: { type: string }
+        description: { type: string, maxLength: 500 }
+        image: { type: string }
+        isActive: { type: boolean }
+        parent: { type: string, nullable: true, description: Parent category id or slug }
     Error:
       type: object
       required: [success, message, code]

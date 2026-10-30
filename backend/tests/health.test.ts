@@ -20,7 +20,7 @@ describe("health", () => {
     expect(res.body.data.name).toBe("AURA API");
   });
 
-  it("allows the documented local storefront origin", async () => {
+  it("allows the documented local storefront origins", async () => {
     for (const origin of ["http://localhost:8000", "http://127.0.0.1:8765"]) {
       const res = await request(app)
         .options("/api/v1/health")

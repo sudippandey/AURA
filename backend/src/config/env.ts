@@ -10,9 +10,10 @@ const envSchema = z.object({
   MONGODB_URI: z.string().min(1).default("mongodb://127.0.0.1:27017/aura"),
   JWT_ACCESS_SECRET: z.string().min(1).default(DEV_ACCESS),
   JWT_REFRESH_SECRET: z.string().min(1).default(DEV_REFRESH),
-  JWT_ACCESS_TTL: z.string().min(1).default("15m"),
-  JWT_REFRESH_TTL: z.string().min(1).default("30d"),
+  JWT_ACCESS_TTL: z.string().regex(/^[1-9]\d*(s|m|h|d|w|y)$/).default("15m"),
+  JWT_REFRESH_TTL: z.string().regex(/^[1-9]\d*(s|m|h|d|w|y)$/).default("30d"),
   CORS_ORIGINS: z.string().min(1).default("http://localhost:5173,http://localhost:8000,http://127.0.0.1:8000,http://localhost:8765,http://127.0.0.1:8765"),
+  BCRYPT_ROUNDS: z.coerce.number().int().min(4).max(31).default(12),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(900000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(500),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info")
