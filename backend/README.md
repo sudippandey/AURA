@@ -45,6 +45,10 @@ curl -s http://localhost:4000/api/v1/nope | jq .
 
 Interactive docs: `http://localhost:4000/api/docs` (Swagger UI). `npm test` runs the health suite.
 
+## Render deployment preview
+
+The repository root `render.yaml` defines a demo web service with this directory as its root, a production build/start command, generated JWT secrets, and a health check. Before deploying it, create a MongoDB Atlas database. Enter the Atlas connection string as `MONGODB_URI` and the exact deployed frontend URL(s) as comma-separated `CORS_ORIGINS` values in Render's environment settings. Do not commit these values. The Blueprint uses Render's free service plan, which may sleep when idle and is intended for preview/demo use.
+
 ## Response envelope (frontend contract)
 
 - Success: `{ "success": true, "data": <payload>, "meta"?: { total, page, pages, limit } }`

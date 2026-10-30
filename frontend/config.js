@@ -4,12 +4,16 @@
 export const CONFIG = {
   get API_BASE_URL() {
     try {
-      return (
+      const configured =
         window.__API_BASE_URL ||
-        localStorage.getItem("aura_api_base_url") ||
-        "http://localhost:4000"
-      );
-    } catch { return (typeof window !== "undefined" && window.__API_BASE_URL) || "http://localhost:4000"; }
+        localStorage.getItem("aura_api_base_url");
+      if (configured) return configured;
+      return ["localhost", "127.0.0.1"].includes(window.location.hostname)
+        ? "http://localhost:4000"
+        : "";
+    } catch {
+      return (typeof window !== "undefined" && window.__API_BASE_URL) || "";
+    }
   },
   USE_MOCK: true, // flip to false when backend is ready (or set localStorage aura_use_mock="0")
   CURRENCY: "USD",
