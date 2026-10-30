@@ -181,4 +181,18 @@ available units, `createdAt` ISO, exactly matching the mock shape in
 `npm run seed` upserts 7 categories + 24 products (mirrored from the frontend
 preview mocks, `createdAt` preserved) and 4 demo accounts
 (`admin|manager|warehouse|customer @aura.shop`, password `SEED_PASSWORD` or
-`aura-demo-1234`). Refuses production unless `SEED_ALLOW_PRODUCTION=true`.
+`aura-demo-1234` for local development). Production seeding requires both `SEED_ALLOW_PRODUCTION=true` and a unique `SEED_PASSWORD`.
+
+## Admin extension (same database, no duplication)
+
+- `payments`: order ref + user, provider/method/amount/currency, status `pending|processing|successful|failed|cancelled|partially_refunded|refunded`, gatewayRef, idempotencyKey (unique), raw provider payload, history[], paidAt. Kept separate from orders; order.payment mirrors status only.
+- `refunds`: order + payment refs, amount, reason, status `requested|approved|processing|completed|rejected|failed`, providerRef (or MANUAL-<ts>), manual flag, history[by/at/note]. Completion of a full refund flips order to `refunded`, partial to `partially_returned`.
+- `coupons`: code (unique, uppercase), type percent|fixed|freeship, value, minSubtotal, maxDiscount, usageLimit/usedCount, perCustomerLimit, startsAt/endsAt, isActive, productSlugs/categorySlugs scope, freeShipping.
+- `shipments`: order ref, provider, trackingNumber, status `pending|packed|shipped|in_transit|delivered|failed|returned`, address snapshot, dispatchedAt/deliveredAt, history[].
+- `notifications`: type order|payment|inventory|refund|customer|system, title/message, refType/refId, read. Fire-and-forget from services (never breaks the primary write).
+- `auditlogs`: actor/actorEmail, action, entity, entityId, before/after, requestId. Append-only; ordinary staff cannot edit.
+- `storesettings`: single `key=default` doc — storeName/logo/contact/currency/timezone/taxRate/shippingFlat/freeShipThreshold/maintenance/notifications. Secrets live in env, never here.
+- `orders` additions: statuses extended to pending|confirmed|processing|packed|shipped|delivered|cancelled|failed|returned|partially_returned|refunded (legacy six remain valid); history[] entries carry `by`; new `notes[]` {body,by,at}.
+- `stockmovements`: types extended with reservation|release|dispatch|damaged|returned; `reservation` holds available without touching on-hand, `dispatch` deducts both, `release` frees holds.
+- `reviews`: new `response` {body,by,at} for official store replies; moderation reuses visible|hidden|flagged.
+- `users`: roles extended to customer|super-admin|admin|product-manager|order-manager|inventory-manager|customer-support|finance-manager|analyst|warehouse-employee (legacy four preserved; seed adds owner/finance/analyst demos).

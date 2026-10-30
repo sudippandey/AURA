@@ -1,7 +1,7 @@
 import { Schema, model, type Document, type Model } from "mongoose";
 
 /** Roles are assigned server-side only. The client can never choose or escalate its role. */
-export const USER_ROLES = ["customer", "admin", "inventory-manager", "warehouse-employee"] as const;
+export const USER_ROLES = ["customer", "super-admin", "admin", "product-manager", "order-manager", "inventory-manager", "customer-support", "finance-manager", "analyst", "warehouse-employee"] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 
 export interface RefreshSession {

@@ -1,0 +1,20 @@
+// Single place for every backend route. Change paths here when your API differs.
+export const ENDPOINTS = {
+  products: "/products",
+  productById: (id) => `/products/${id}`,
+  featured: "/products/featured",
+  related: (id) => `/products/${id}/related`,
+  search: "/products/search",
+  byCategory: (cat) => `/categories/${cat}/products`,
+  categories: "/categories",
+  reviews: (id) => `/products/${id}/reviews`,
+  cart: "/cart",
+  login: "/auth/login",
+  register: "/auth/register",
+  refresh: "/auth/refresh",
+  logout: "/auth/logout",
+  forgot: "/auth/forgot-password",
+  profile: "/auth/me",
+  orders: "/orders",
+  orderById: (id) => `/orders/${id}`,
+};

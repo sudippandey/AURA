@@ -18,9 +18,13 @@ import { hashPassword } from "../utils/password.js";
 import { SEED_CATEGORIES, SEED_PRODUCTS } from "./catalog.js";
 
 const SEED_PASSWORD = process.env.SEED_PASSWORD ?? "aura-demo-1234";
+const DEFAULT_SEED_PASSWORD = "aura-demo-1234";
 
 const DEMO_USERS = [
+  { name: "AURA Owner", email: "owner@aura.shop", role: "super-admin" },
   { name: "AURA Admin", email: "admin@aura.shop", role: "admin" },
+  { name: "AURA Finance", email: "finance@aura.shop", role: "finance-manager" },
+  { name: "AURA Analyst", email: "analyst@aura.shop", role: "analyst" },
   { name: "AURA Manager", email: "manager@aura.shop", role: "inventory-manager" },
   { name: "AURA Warehouse", email: "warehouse@aura.shop", role: "warehouse-employee" },
   { name: "AURA Customer", email: "customer@aura.shop", role: "customer" }
@@ -101,9 +105,21 @@ async function seedUsers(): Promise<void> {
   }
 }
 
+async function seedAdminExtras(): Promise<void> {
+  const { StoreSettings } = await import('../models/StoreSettings.js');
+  const { Coupon } = await import('../models/Coupon.js');
+  await StoreSettings.updateOne({ key: 'default' }, { $set: { key: 'default', storeName: 'AURA', currency: 'USD', timezone: 'UTC', taxRate: 0.08 } }, { upsert: true });
+  const base = [{ code: 'WELCOME10', type: 'percent', value: 10, minSubtotal: 0, isActive: true, freeShipping: false }, { code: 'PREMIUM15', type: 'percent', value: 15, minSubtotal: 200, isActive: true, freeShipping: false }, { code: 'FREESHIP', type: 'freeship', value: 0, minSubtotal: 0, isActive: true, freeShipping: true }];
+  for (const cp of base) { await Coupon.updateOne({ code: cp.code }, { $set: cp }, { upsert: true }); }
+}
 async function main(): Promise<void> {
-  if (env.NODE_ENV === "production" && process.env.SEED_ALLOW_PRODUCTION !== "true") {
-    console.error("[seed] Refusing to seed production. Set SEED_ALLOW_PRODUCTION=true to override.");
+  if (
+    env.NODE_ENV === "production" &&
+    (process.env.SEED_ALLOW_PRODUCTION !== "true" ||
+      !process.env.SEED_PASSWORD ||
+      SEED_PASSWORD === DEFAULT_SEED_PASSWORD)
+  ) {
+    console.error("[seed] Refusing to seed production without SEED_ALLOW_PRODUCTION=true and a unique SEED_PASSWORD.");
     process.exit(1);
   }
   await connectDb();
@@ -111,6 +127,7 @@ async function main(): Promise<void> {
     const catIds = await seedCategories();
     await seedProducts(catIds);
     await seedUsers();
+    await seedAdminExtras();
     const [cats, prods, users] = await Promise.all([
       Category.countDocuments(),
       Product.countDocuments(),
@@ -121,9 +138,6 @@ async function main(): Promise<void> {
     for (const u of DEMO_USERS) console.log(`[seed]   ${u.role} → ${u.email}`);
   } finally {
     await disconnectDb();
-    // dotenv/mongoose handles may keep the loop alive; force a clean exit like server shutdown does.
-    await mongoose.disconnect().catch(() => undefined);
-    process.exit(0);
   }
 }
 

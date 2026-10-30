@@ -22,7 +22,7 @@ function isJwtDuration(value: string): value is JwtDuration {
 }
 
 function jwtDuration(value: string): StringValue {
-  if (!isJwtDuration(value)) throw new Error("JWT expiration must be a number followed by s, m, h, d, w, or y.");
+  if (!isJwtDuration(value)) throw new Error("JWT expiration must be a positive number followed by s, m, h, d, w, or y.");
   return value;
 }
 

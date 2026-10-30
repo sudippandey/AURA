@@ -982,3 +982,31 @@ components:
           type: array
           items:
             type: object
+
+# --- AURA Admin extension (modular monolith, same backend) ---
+# Protected namespace: /api/v1/admin (Bearer JWT; action-level permissions).
+#   GET    /overview                      dashboard metrics (preset=today|yesterday|7d|30d|this_month|last_month|from&to)
+#   GET    /sales?preset=&bucket=          summary + revenue series + by-brand
+#   GET    /stats                          legacy dashboard stats (compat)
+#   GET    /orders /orders/:ref            admin list (status,q,from,to,page,limit) + detail incl. history/notes
+#   PATCH  /orders/:ref/status             lifecycle: pending>confirmed>processing>packed>shipped>delivered + cancelled/failed/returned/partially_returned/refunded
+#   POST   /orders/:ref/notes              internal note (audited)
+#   GET    /inventory/overview /low /movements   stock health + ledger
+#   POST   /inventory/{adjust,reserve,release,dispatch,damaged,returned}  ledger-backed writes (reason required, audited)
+#   GET    /payments /payments/:id         transactions (status,method,q)
+#   POST   /payments/webhook/:provider     HMAC-signed idempotent webhook (x-webhook-signature)
+#   GET    /refunds  POST /refunds         request (orderRef,amount,reason)
+#   PATCH  /refunds/:id                    requested>approved>processing>completed (+manual completion) | rejected/failed
+#   GET    /customers /customers/:id       customers with orders/spent/AOV; PATCH isActive
+#   GET    /brands                         distinct brands + product counts
+#   GET|POST /coupons  PATCH|DELETE /coupons/:id   percent/fixed/freeship, min/max/usage windows, category/product scope
+#   GET    /shipping  PUT /shipping/:orderRef       manual shipments + tracking + status flow
+#   GET    /reviews  PATCH /reviews/:id (status)  POST /reviews/:id/respond
+#   GET    /reports/{sales,products,customers,inventory,payments,refunds}  (format=csv for sales/products)
+#   GET    /roles  GET|POST /staff  PATCH /staff/:id   role directory + staff mgmt (self-edit refused, audited)
+#   GET    /activity-logs                  immutable audit trail (action,entity filters)
+#   GET|PATCH /settings                    store settings (secrets never exposed)
+#   GET    /notifications  POST /notifications/read-all
+# Business rules: orders snapshot purchase data; pricing validated server-side;
+# stock decrements are atomic guards with rollback; webhooks verified + idempotent;
+# refunds trace to payments; every admin write is audit-logged.

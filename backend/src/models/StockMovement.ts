@@ -1,12 +1,13 @@
 import { Schema, model, type Document, type Model, type Types } from "mongoose";
 
-export const MOVEMENT_TYPES = ["sale", "restock", "adjustment"] as const;
+export const MOVEMENT_TYPES = ["sale","restock","adjustment","reservation","release","dispatch","damaged","returned"] as const;
 export type MovementType = (typeof MOVEMENT_TYPES)[number];
 
 /**
- * Append-only stock ledger. Every change to Product.stock writes a movement:
- * checkout/cancel log automatically (orderService), humans log via /inventory/adjust.
- * `qty` is signed (sales negative); `balance` is the on-hand stock afterwards.
+ * Append-only stock ledger. Every change to Product.stock / reservedStock writes
+ * a movement: checkout reserves, dispatch deducts, cancels release, humans log via
+ * /inventory/adjust with a reason. `qty` is signed (sales/dispatch negative);
+ * `balance` is the on-hand stock afterwards.
  */
 export interface StockMovementDoc extends Document {
   product: Types.ObjectId;

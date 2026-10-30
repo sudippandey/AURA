@@ -4,7 +4,7 @@ import { Product, availableStock } from "../models/Product.js";
 import { StockMovement, type MovementType } from "../models/StockMovement.js";
 
 /** Physical stock handlers: managers plus the warehouse crew doing counts. */
-export const INVENTORY_ROLES = ["admin", "inventory-manager", "warehouse-employee"] as const;
+export const INVENTORY_ROLES = ["super-admin", "admin", "inventory-manager", "order-manager", "warehouse-employee"] as const;
 
 export interface MovementResponse {
   id: string;
@@ -175,4 +175,66 @@ export async function inventoryOverview(): Promise<{
     outOfStock: counts.out,
     lowStock: counts.low
   };
+}
+
+/** Reserve `qty` units (checkout hold). Decrements AVAILABLE without touching on-hand; never below zero. */
+export async function reserveStock(productRef: string, qty: number, reason: string, actorId?: string) {
+  if (!Number.isInteger(qty) || qty < 1) throw new AppError('qty must be a positive integer.', 400, 'INVALID_QTY');
+  const q = productRef.trim();
+  const product = Types.ObjectId.isValid(q) ? await Product.findById(q) : await Product.findOne({ slug: q.toLowerCase() });
+  if (!product) throw new AppError('Product not found.', 404, 'PRODUCT_NOT_FOUND');
+  if (availableStock(product) < qty) throw new AppError('Only ' + availableStock(product) + ' available.', 409, 'INSUFFICIENT_AVAILABLE');
+  product.reservedStock = (product.reservedStock ?? 0) + qty;
+  await product.save();
+  await logMovement({ productId: product._id, type: 'reservation', qty, balance: product.stock, reason: reason || 'Reservation', actor: actorId });
+  return { productId: String(product._id), slug: product.slug, stock: product.stock, reserved: product.reservedStock, available: availableStock(product) };
+}
+
+/** Release a prior reservation (cancel before dispatch). Never lets reserved go negative. */
+export async function releaseStock(productRef: string, qty: number, reason: string, actorId?: string, orderNumber?: string) {
+  const q = productRef.trim();
+  const product = Types.ObjectId.isValid(q) ? await Product.findById(q) : await Product.findOne({ slug: q.toLowerCase() });
+  if (!product) throw new AppError('Product not found.', 404, 'PRODUCT_NOT_FOUND');
+  const rel = Math.min(qty, product.reservedStock ?? 0);
+  product.reservedStock = Math.max(0, (product.reservedStock ?? 0) - qty);
+  await product.save();
+  await logMovement({ productId: product._id, type: 'release', qty: rel, balance: product.stock, reason: reason || 'Release', orderNumber, actor: actorId });
+  return { productId: String(product._id), slug: product.slug, stock: product.stock, reserved: product.reservedStock, available: availableStock(product) };
+}
+
+/** Dispatch: convert reserved hold into a real deduction (packed/shipped). Atomic guard on reserved. */
+export async function dispatchStock(productRef: string, qty: number, reason: string, actorId?: string, orderNumber?: string) {
+  const q = productRef.trim();
+  const res = await Product.updateOne({ $or: [{ _id: Types.ObjectId.isValid(q) ? new Types.ObjectId(q) : null }, { slug: q.toLowerCase() }], reservedStock: { $gte: qty } }, { $inc: { stock: -qty, reservedStock: -qty, soldCount: qty } });
+  if ((res.modifiedCount ?? 0) === 0) {
+    const product = Types.ObjectId.isValid(q) ? await Product.findById(q) : await Product.findOne({ slug: q.toLowerCase() });
+    if (!product) throw new AppError('Product not found.', 404, 'PRODUCT_NOT_FOUND');
+    if ((product.reservedStock ?? 0) < qty) throw new AppError('Not enough reserved stock to dispatch.', 409, 'INSUFFICIENT_RESERVED');
+    throw new AppError('Dispatch failed, please retry.', 409, 'DISPATCH_RACE');
+  }
+  const fresh = Types.ObjectId.isValid(q) ? await Product.findById(q) : await Product.findOne({ slug: q.toLowerCase() });
+  await logMovement({ productId: fresh!._id, type: 'dispatch', qty: -qty, balance: fresh!.stock, reason: reason || 'Dispatch', orderNumber, actor: actorId });
+  return { productId: String(fresh!._id), slug: fresh!.slug, stock: fresh!.stock, reserved: fresh!.reservedStock, available: availableStock(fresh!) };
+}
+
+/** Damaged / returned / manual restock helpers — all ledger-backed. */
+export async function recordDamaged(productRef: string, qty: number, reason: string, actorId: string) {
+  const q = productRef.trim();
+  const product = Types.ObjectId.isValid(q) ? await Product.findById(q) : await Product.findOne({ slug: q.toLowerCase() });
+  if (!product) throw new AppError('Product not found.', 404, 'PRODUCT_NOT_FOUND');
+  if (!Number.isInteger(qty) || qty < 1 || qty > product.stock) throw new AppError('Damaged qty must be 1..on-hand.', 400, 'INVALID_QTY');
+  product.stock -= qty;
+  await product.save();
+  await logMovement({ productId: product._id, type: 'damaged', qty: -qty, balance: product.stock, reason, actor: actorId });
+  return { stock: product.stock, available: availableStock(product) };
+}
+export async function recordReturned(productRef: string, qty: number, reason: string, actorId: string, orderNumber?: string) {
+  const q = productRef.trim();
+  const product = Types.ObjectId.isValid(q) ? await Product.findById(q) : await Product.findOne({ slug: q.toLowerCase() });
+  if (!product) throw new AppError('Product not found.', 404, 'PRODUCT_NOT_FOUND');
+  if (!Number.isInteger(qty) || qty < 1) throw new AppError('qty must be a positive integer.', 400, 'INVALID_QTY');
+  product.stock += qty;
+  await product.save();
+  await logMovement({ productId: product._id, type: 'returned', qty, balance: product.stock, reason, orderNumber, actor: actorId });
+  return { stock: product.stock, available: availableStock(product) };
 }
