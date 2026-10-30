@@ -44,6 +44,14 @@ npm run build
 npm run lint
 ```
 
+## Deployment preview
+
+The storefront can be deployed as a static Vercel project with the project root set to `frontend`. Its Vercel build configuration creates `frontend/dist`. Set the Vercel environment variable `API_BASE_URL` to the deployed API origin (for example `https://aura-api.onrender.com`) and redeploy after the backend URL is known.
+
+The API has a Render Blueprint in `render.yaml`. Create a MongoDB Atlas database first, then deploy the Blueprint and enter its `MONGODB_URI` and `CORS_ORIGINS` values privately in Render. Set `CORS_ORIGINS` to the exact Vercel production URL; include additional preview/custom-domain URLs only if needed. Render generates the JWT secrets.
+
+After both services deploy, verify `https://<api-host>/api/v1/health` reports a connected MongoDB. The storefront is still a demo: only health/API-info routes exist, and catalog, authentication, cart, and order functionality remain mock-only. Do not set `aura_use_mock` to `"0"` for general storefront use until those endpoints are implemented. The free Render service may sleep when idle and is not a production availability plan.
+
 ## Repository layout
 
 - `frontend/`: storefront application, API client, mock data, and UI.
