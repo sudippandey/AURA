@@ -1,0 +1,94 @@
+openapi: 3.0.3
+info:
+  title: AURA E-commerce API
+  version: 1.0.0
+  description: |
+    Modular-monolith REST API for the AURA storefront. All routes are versioned
+    under /api/v1. Success envelope: { success, data, meta? }. Errors:
+    { success: false, message, code, details? }.
+servers:
+  - url: http://localhost:4000
+    description: Local development
+paths:
+  /api/v1/:
+    get:
+      summary: API index
+      tags: [Health]
+      responses:
+        "200":
+          description: API info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Success"
+  /api/v1/health:
+    get:
+      summary: Liveness + dependency status
+      tags: [Health]
+      responses:
+        "200":
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Success"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                            example: ok
+                          version:
+                            type: string
+                            example: 1.0.0
+                          env:
+                            type: string
+                            example: development
+                          uptimeSec:
+                            type: integer
+                          timestamp:
+                            type: string
+                            format: date-time
+                          mongodb:
+                            type: string
+                            example: connected
+components:
+  schemas:
+    Success:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          description: Payload (object, array, or null)
+        meta:
+          type: object
+          properties:
+            total:
+              type: integer
+            page:
+              type: integer
+            pages:
+              type: integer
+            limit:
+              type: integer
+    Error:
+      type: object
+      required: [success, message, code]
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+        code:
+          type: string
+        details:
+          type: array
+          items:
+            type: object
