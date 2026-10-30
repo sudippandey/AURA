@@ -7,7 +7,16 @@ import swaggerUi from "swagger-ui-express";
 import { env } from "./config/env.js";
 import { loadSwaggerDocument } from "./docs/swagger.js";
 import { errorHandler, notFound } from "./middleware/errorHandler.js";
+import { adminRouter } from "./routes/admin.js";
+import { authRouter } from "./routes/auth.js";
+import { cartRouter } from "./routes/cart.js";
+import { categoriesRouter } from "./routes/categories.js";
 import { healthRouter } from "./routes/health.js";
+import { inventoryRouter } from "./routes/inventory.js";
+import { ordersRouter } from "./routes/orders.js";
+import { productsRouter } from "./routes/products.js";
+import { reviewsRouter } from "./routes/reviews.js";
+import { wishlistRouter } from "./routes/wishlist.js";
 import { logger } from "./utils/logger.js";
 
 export function createApp(): express.Express {
@@ -22,7 +31,7 @@ export function createApp(): express.Express {
   const origins = env.CORS_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean);
   app.use(cors({ origin: origins, credentials: true }));
 
-  // Global rate limit (tighter per-route limits, e.g. auth, arrive in Stage 2).
+  // Global rate limit; authentication routes apply tighter route-specific limits.
   const limiter = rateLimit({
     windowMs: env.RATE_LIMIT_WINDOW_MS,
     limit: env.RATE_LIMIT_MAX,
@@ -32,7 +41,7 @@ export function createApp(): express.Express {
   });
   app.use("/api/", limiter);
 
-  // Body parsing with size caps (no file uploads in Stage 1).
+  // Body parsing with size caps (file uploads are not currently supported).
   app.use(express.json({ limit: "256kb" }));
   app.use(express.urlencoded({ extended: false, limit: "256kb" }));
 
@@ -48,6 +57,15 @@ export function createApp(): express.Express {
     });
   });
   app.use("/api/v1", healthRouter);
+  app.use("/api/v1/auth", authRouter);
+  app.use("/api/v1/products", productsRouter);
+  app.use("/api/v1/categories", categoriesRouter);
+  app.use("/api/v1/cart", cartRouter);
+  app.use("/api/v1/wishlist", wishlistRouter);
+  app.use("/api/v1/orders", ordersRouter);
+  app.use("/api/v1/inventory", inventoryRouter);
+  app.use("/api/v1/reviews", reviewsRouter);
+  app.use("/api/v1/admin", adminRouter);
 
   // Interactive docs (skipped gracefully if the yaml is missing, e.g. trimmed deploys).
   try {

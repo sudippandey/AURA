@@ -1,81 +1,51 @@
-# AURA Backend — Stage 1: Foundation
+# AURA API
 
-Express + TypeScript + MongoDB (Mongoose) modular monolith. Versioned API under `/api/v1`.
-Stage 1 delivers the runnable foundation: config, security middleware, error handling, health checks, docs.
+Express + TypeScript + MongoDB (Mongoose), versioned under `/api/v1`.
 
-## Prerequisites
+## Current scope
 
-- Node.js ≥ 20 (`node -v`)
-- MongoDB: local `mongod` **or** MongoDB Atlas (connection string)
-  - Stage 1 works on a single node. **Stage 6 inventory transactions will require a replica set** — even locally (`mongod --replSet rs0`). If you plan ahead, start one now (see below).
+The API includes:
 
-## Install & run
+- Registration, login, refresh/logout, profile, and password-reset flows with JWTs, bcrypt, and role-based access.
+- Product and category catalog/search endpoints.
+- Authenticated cart and wishlist endpoints.
+- Order checkout/history/status endpoints.
+- Inventory adjustments/ledger, review moderation, and admin endpoints.
+- Health checks, Swagger documentation, validation, centralized errors, CORS allow-listing, and rate limiting.
 
-```bash
+Payment processing is simulated; do not treat order/payment data as production-ready. Review the endpoint details in `src/docs/openapi.yaml`, authentication notes in `AUTHENTICATION.md`, and data model notes in `DATABASE_SCHEMA.md`.
+
+## Prerequisites and local setup
+
+- Node.js 20 or newer.
+- MongoDB locally or MongoDB Atlas.
+
+```sh
 cd backend
 npm install
-cp .env.example .env   # adjust MONGODB_URI / secrets as needed
-npm run dev            # tsx watch — http://localhost:4000
+cp .env.example .env
+# Set MONGODB_URI and replace development secrets in .env as appropriate.
+npm run dev
 ```
 
-Other scripts: `npm run build` + `npm start` (production), `npm run typecheck`, `npm run lint`, `npm test` (vitest).
+The API listens on port 4000 by default. Swagger UI is at `http://localhost:4000/api/docs`; health is at `http://localhost:4000/api/v1/health`.
 
-## MongoDB configuration
+## Commands
 
-| Setup | `MONGODB_URI` |
-|---|---|
-| Local single node | `mongodb://127.0.0.1:27017/aura` |
-| Local replica set (recommended prep for Stage 6) | start with `mongod --replSet rs0 --dbpath <data>`, then `mongosh --eval "rs.initiate()"`, URI `mongodb://127.0.0.1:27017/aura?replicaSet=rs0` |
-| Atlas | `mongodb+srv://<user>:<password>@<cluster>.mongodb.net/aura?retryWrites=true&w=majority` |
-
-JWT secrets: dev defaults exist so the server boots out of the box; **production refuses to boot** with them (see `src/config/env.ts`). Generate real ones: `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`.
-
-`CORS_ORIGINS` is a comma-separated allow-list (defaults include local frontend origins on ports 5173, 8000, and 8765).
-
-## Test the health endpoint
-
-```bash
-curl -s http://localhost:4000/api/v1/health | jq .
-# { "success": true, "data": { "status": "ok", "version": "1.0.0", "env": "development",
-#   "uptimeSec": 12, "timestamp": "...", "mongodb": "connected" } }
-
-curl -s http://localhost:4000/api/v1/nope | jq .
-# { "success": false, "message": "Route not found: GET /api/v1/nope", "code": "NOT_FOUND" }
+```sh
+npm test
+npm run typecheck
+npm run build
+npm run lint
+npm run seed
 ```
 
-Interactive docs: `http://localhost:4000/api/docs` (Swagger UI). `npm test` runs the health suite.
+Integration tests connect to `MONGODB_URI_TEST` (default: `mongodb://127.0.0.1:27017/aura_test`) and **drop that database before running**. Set it to a disposable, isolated test database; never point it at production or a database containing data you need.
 
-## Render deployment preview
+The seed command creates demo catalog data and accounts. It refuses to run in production unless `SEED_ALLOW_PRODUCTION=true` is explicitly set. Set a private `SEED_PASSWORD` before seeding and change/remove seeded credentials before any shared deployment.
 
-The repository root `render.yaml` defines a demo web service with this directory as its root, a build that includes TypeScript's development dependencies and copies the OpenAPI document into the production output, generated JWT secrets, and a health check. Before deploying it, create a MongoDB Atlas database. Enter the Atlas connection string as `MONGODB_URI` and the exact deployed frontend URL(s) as comma-separated `CORS_ORIGINS` values in Render's environment settings. Do not commit these values. The Blueprint uses Render's free service plan, which may sleep when idle and is intended for preview/demo use.
+## Render preview deployment
 
-## Response envelope (frontend contract)
+The repository root `render.yaml` defines the Render service, installs development dependencies for TypeScript compilation, copies the OpenAPI file into `dist`, and configures the API health check. Set `MONGODB_URI` and the exact frontend origin(s) in Render's private environment settings. Render generates JWT secrets. Do not commit `.env` files or paste secrets into chat.
 
-- Success: `{ "success": true, "data": <payload>, "meta"?: { total, page, pages, limit } }`
-- Error: `{ "success": false, "message": "...", "code": "...", "details"?: [...] }` with proper HTTP status codes.
-
-The storefront API client adds the `/api/v1` prefix and unwraps this success envelope centrally. The current backend implements only API info and health routes; storefront catalog, auth, cart, and order endpoints remain future work, so keep mock mode enabled until those routes are implemented.
-
-## Security defaults (Stage 1)
-
-helmet headers, CORS allow-list + credentials, global rate limit (500/15 min, tighter auth limits in Stage 2), 256 KB JSON cap, zod-validated env, centralized safe error responses (stack traces never leak; validation `details` only outside production except field errors), `x-powered-by` off.
-
-## Project structure
-
-```
-backend/
-  src/
-    server.ts            bootstrap (DB → app → listen, graceful shutdown)
-    app.ts               createApp(): middleware, routes, swagger, 404, errors
-    config/env.ts        zod-validated env (fails fast, guards prod secrets)
-    config/db.ts         mongoose connect/status/disconnect
-    middleware/          asyncHandler, errorHandler (AppError + 404), validate (zod)
-    routes/health.ts     GET /api/v1 (+ /health)
-    utils/               logger, responses (ok/created/paginated envelope)
-    docs/                openapi.yaml + loader (Swagger UI at /api/docs)
-  tests/health.test.ts   supertest suite for the foundation
-```
-
-## Next (Stage 2): database + authentication
-
-User model (roles: customer/admin/inventory-manager/warehouse-employee, never trusted from client), bcrypt hashing, register/login/refresh/logout, `GET /auth/me`, `validate`+`requireAuth`+`requireRole` middleware, per-route auth rate limits, tests for every path above.
+The Blueprint uses Render's free service plan, which may sleep when idle. Treat it as a preview deployment, not a production availability plan. Product, auth, cart, and order routes exist, but payment remains simulated and the storefront still defaults to mock mode until its API integration is completed and verified.

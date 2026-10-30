@@ -12,6 +12,7 @@
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint .",
+    "seed": "tsx src/seed/seed.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
