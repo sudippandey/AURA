@@ -47,7 +47,7 @@ Interactive docs: `http://localhost:4000/api/docs` (Swagger UI). `npm test` runs
 
 ## Render deployment preview
 
-The repository root `render.yaml` defines a demo web service with this directory as its root, a build that includes TypeScript's development dependencies, generated JWT secrets, and a health check. Before deploying it, create a MongoDB Atlas database. Enter the Atlas connection string as `MONGODB_URI` and the exact deployed frontend URL(s) as comma-separated `CORS_ORIGINS` values in Render's environment settings. Do not commit these values. The Blueprint uses Render's free service plan, which may sleep when idle and is intended for preview/demo use.
+The repository root `render.yaml` defines a demo web service with this directory as its root, a build that includes TypeScript's development dependencies and copies the OpenAPI document into the production output, generated JWT secrets, and a health check. Before deploying it, create a MongoDB Atlas database. Enter the Atlas connection string as `MONGODB_URI` and the exact deployed frontend URL(s) as comma-separated `CORS_ORIGINS` values in Render's environment settings. Do not commit these values. The Blueprint uses Render's free service plan, which may sleep when idle and is intended for preview/demo use.
 
 ## Response envelope (frontend contract)
 
